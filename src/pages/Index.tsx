@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -7,6 +7,8 @@ import { Textarea } from "@/components/ui/textarea";
 import Icon from "@/components/ui/icon";
 import { toast } from "sonner";
 
+const API_URL = "https://functions.poehali.dev/2fd80ef4-4781-4f50-8490-63de8f495877";
+
 interface Product {
   id: string;
   photo: string | null;
@@ -14,12 +16,14 @@ interface Product {
   sku: string;
   sellingPrice: number | null;
   purchasePrice: number | null;
+  quantity: number;
+  createdAt?: string;
 }
 
 const Index = () => {
   const [products, setProducts] = useState<Product[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
-  const [editingId, setEditingId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
 
   const [photoDialogOpen, setPhotoDialogOpen] = useState<string | null>(null);
   const [tempPhoto, setTempPhoto] = useState<string | null>(null);
@@ -30,34 +34,81 @@ const Index = () => {
   const [skuDialogOpen, setSkuDialogOpen] = useState<string | null>(null);
   const [tempSku, setTempSku] = useState("");
   
+  const [quantityDialogOpen, setQuantityDialogOpen] = useState<string | null>(null);
+  const [tempQuantity, setTempQuantity] = useState("");
+  
   const [sellingPriceDialogOpen, setSellingPriceDialogOpen] = useState<string | null>(null);
   const [tempSellingPrice, setTempSellingPrice] = useState("");
   
   const [purchasePriceDialogOpen, setPurchasePriceDialogOpen] = useState<string | null>(null);
   const [tempPurchasePrice, setTempPurchasePrice] = useState("");
 
-  const addProduct = () => {
-    const newProduct: Product = {
-      id: Date.now().toString(),
-      photo: null,
-      hint: "",
-      sku: "",
-      sellingPrice: null,
-      purchasePrice: null,
-    };
-    setProducts([...products, newProduct]);
-    setEditingId(newProduct.id);
+  useEffect(() => {
+    loadProducts();
+  }, []);
+
+  const loadProducts = async () => {
+    try {
+      const response = await fetch(API_URL);
+      const data = await response.json();
+      setProducts(data);
+    } catch (error) {
+      toast.error("Ошибка загрузки товаров");
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const deleteProduct = (id: string) => {
-    setProducts(products.filter((p) => p.id !== id));
-    toast.success("Товар удален");
+  const addProduct = async () => {
+    try {
+      const response = await fetch(API_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          photo: null,
+          hint: "",
+          sku: "",
+          sellingPrice: null,
+          purchasePrice: null,
+          quantity: 1
+        })
+      });
+      const data = await response.json();
+      await loadProducts();
+      toast.success("Товар добавлен");
+    } catch (error) {
+      toast.error("Ошибка добавления товара");
+    }
   };
 
-  const updateProduct = (id: string, field: keyof Product, value: any) => {
-    setProducts(
-      products.map((p) => (p.id === id ? { ...p, [field]: value } : p))
-    );
+  const deleteProduct = async (id: string) => {
+    try {
+      await fetch(`${API_URL}?id=${id}`, { method: "DELETE" });
+      await loadProducts();
+      toast.success("Товар удален");
+    } catch (error) {
+      toast.error("Ошибка удаления товара");
+    }
+  };
+
+  const updateProduct = async (id: string, updates: Partial<Product>) => {
+    const product = products.find(p => p.id === id);
+    if (!product) return;
+
+    try {
+      await fetch(API_URL, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id,
+          ...product,
+          ...updates
+        })
+      });
+      await loadProducts();
+    } catch (error) {
+      toast.error("Ошибка обновления товара");
+    }
   };
 
   const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -77,9 +128,9 @@ const Index = () => {
     setPhotoDialogOpen(id);
   };
 
-  const confirmPhoto = () => {
-    if (photoDialogOpen && tempPhoto) {
-      updateProduct(photoDialogOpen, "photo", tempPhoto);
+  const confirmPhoto = async () => {
+    if (photoDialogOpen) {
+      await updateProduct(photoDialogOpen, { photo: tempPhoto });
       toast.success("Фото загружено");
     }
     setPhotoDialogOpen(null);
@@ -97,9 +148,9 @@ const Index = () => {
     setHintDialogOpen(id);
   };
 
-  const confirmHint = () => {
+  const confirmHint = async () => {
     if (hintDialogOpen) {
-      updateProduct(hintDialogOpen, "hint", tempHint);
+      await updateProduct(hintDialogOpen, { hint: tempHint });
       toast.success("Подсказка сохранена");
     }
     setHintDialogOpen(null);
@@ -117,9 +168,9 @@ const Index = () => {
     setSkuDialogOpen(id);
   };
 
-  const confirmSku = () => {
+  const confirmSku = async () => {
     if (skuDialogOpen) {
-      updateProduct(skuDialogOpen, "sku", tempSku);
+      await updateProduct(skuDialogOpen, { sku: tempSku });
       toast.success("Артикул сохранен");
     }
     setSkuDialogOpen(null);
@@ -131,15 +182,35 @@ const Index = () => {
     setTempSku("");
   };
 
+  const openQuantityDialog = (id: string) => {
+    const product = products.find(p => p.id === id);
+    setTempQuantity(product?.quantity?.toString() || "1");
+    setQuantityDialogOpen(id);
+  };
+
+  const confirmQuantity = async () => {
+    if (quantityDialogOpen && tempQuantity) {
+      await updateProduct(quantityDialogOpen, { quantity: parseInt(tempQuantity) });
+      toast.success("Количество сохранено");
+    }
+    setQuantityDialogOpen(null);
+    setTempQuantity("");
+  };
+
+  const cancelQuantity = () => {
+    setQuantityDialogOpen(null);
+    setTempQuantity("");
+  };
+
   const openSellingPriceDialog = (id: string) => {
     const product = products.find(p => p.id === id);
     setTempSellingPrice(product?.sellingPrice?.toString() || "");
     setSellingPriceDialogOpen(id);
   };
 
-  const confirmSellingPrice = () => {
+  const confirmSellingPrice = async () => {
     if (sellingPriceDialogOpen && tempSellingPrice) {
-      updateProduct(sellingPriceDialogOpen, "sellingPrice", parseFloat(tempSellingPrice));
+      await updateProduct(sellingPriceDialogOpen, { sellingPrice: parseFloat(tempSellingPrice) });
       toast.success("Цена продажи зафиксирована");
     }
     setSellingPriceDialogOpen(null);
@@ -157,9 +228,9 @@ const Index = () => {
     setPurchasePriceDialogOpen(id);
   };
 
-  const confirmPurchasePrice = () => {
+  const confirmPurchasePrice = async () => {
     if (purchasePriceDialogOpen && tempPurchasePrice) {
-      updateProduct(purchasePriceDialogOpen, "purchasePrice", parseFloat(tempPurchasePrice));
+      await updateProduct(purchasePriceDialogOpen, { purchasePrice: parseFloat(tempPurchasePrice) });
       toast.success("Цена покупки зафиксирована");
     }
     setPurchasePriceDialogOpen(null);
@@ -171,11 +242,30 @@ const Index = () => {
     setTempPurchasePrice("");
   };
 
+  const formatDate = (dateStr: string) => {
+    const date = new Date(dateStr);
+    return date.toLocaleString('ru-RU', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
+
   const filteredProducts = products.filter(
     (p) =>
       p.sku.toLowerCase().includes(searchQuery.toLowerCase()) ||
       p.hint.toLowerCase().includes(searchQuery.toLowerCase())
   );
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-gray-500">Загрузка...</div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 p-4 md:p-8">
@@ -194,7 +284,7 @@ const Index = () => {
             <Icon name="Search" className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
             <Input
               type="text"
-              placeholder="Поиск по артикулу или названию товара..."
+              placeholder="Поиск по артикулу или подсказке..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="pl-10 h-12 text-base"
@@ -222,88 +312,105 @@ const Index = () => {
 
           {filteredProducts.map((product) => (
             <Card key={product.id} className="p-4 md:p-6 animate-fade-in">
-              <div className="flex flex-col md:flex-row gap-4 items-start">
-                <button 
-                  onClick={() => openPhotoDialog(product.id)}
-                  className="w-full md:w-24 h-24 border-2 border-dashed border-gray-300 rounded-lg flex items-center justify-center hover:border-primary transition-colors flex-shrink-0"
-                >
-                  {product.photo ? (
-                    <img src={product.photo} alt="Товар" className="w-full h-full object-cover rounded-lg" />
-                  ) : (
-                    <Icon name="Image" size={32} className="text-gray-400" />
-                  )}
-                </button>
+              <div className="flex flex-col gap-4">
+                <div className="flex items-center gap-3 text-xs text-gray-500">
+                  <Icon name="Clock" size={14} />
+                  {product.createdAt && formatDate(product.createdAt)}
+                </div>
 
-                <div className="flex-1 w-full space-y-4">
-                  <div className="flex flex-col sm:flex-row gap-3">
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
-                      className="w-full sm:w-auto"
-                      onClick={() => openHintDialog(product.id)}
-                    >
-                      <Icon name="Lightbulb" size={16} className="mr-2" />
-                      Подсказка {product.hint && "✓"}
-                    </Button>
+                <div className="flex flex-col md:flex-row gap-4 items-start">
+                  <button 
+                    onClick={() => openPhotoDialog(product.id)}
+                    className="w-full md:w-24 h-24 border-2 border-dashed border-gray-300 rounded-lg flex items-center justify-center hover:border-primary transition-colors flex-shrink-0"
+                  >
+                    {product.photo ? (
+                      <img src={product.photo} alt="Товар" className="w-full h-full object-cover rounded-lg" />
+                    ) : (
+                      <Icon name="Image" size={32} className="text-gray-400" />
+                    )}
+                  </button>
 
-                    <Button
-                      variant="outline"
-                      className="flex-1 justify-start text-left"
-                      onClick={() => openSkuDialog(product.id)}
-                    >
-                      {product.sku || "Артикул товара"}
-                    </Button>
+                  <div className="flex-1 w-full space-y-3">
+                    <div className="flex flex-col sm:flex-row gap-3">
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        className="w-full sm:w-auto"
+                        onClick={() => openHintDialog(product.id)}
+                      >
+                        <Icon name="Lightbulb" size={16} className="mr-2" />
+                        Подсказка {product.hint && "✓"}
+                      </Button>
+
+                      <Button
+                        variant="outline"
+                        className="flex-1 justify-start text-left"
+                        onClick={() => openSkuDialog(product.id)}
+                      >
+                        {product.sku || "Артикул товара"}
+                      </Button>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <Button
+                        variant="outline"
+                        className="justify-start text-left"
+                        onClick={() => openQuantityDialog(product.id)}
+                      >
+                        <Icon name="Package" size={16} className="mr-2" />
+                        {product.quantity ? `${product.quantity} шт` : "Кол-во"}
+                      </Button>
+
+                      <Button
+                        variant="outline"
+                        className="justify-start text-left"
+                        onClick={() => openPurchasePriceDialog(product.id)}
+                      >
+                        {product.purchasePrice ? `Покупка: ${product.purchasePrice} ₽` : "Цена покупки"}
+                      </Button>
+
+                      <Button
+                        variant="outline"
+                        className="justify-start text-left"
+                        onClick={() => openSellingPriceDialog(product.id)}
+                      >
+                        {product.sellingPrice ? `Продажа: ${product.sellingPrice} ₽` : "Цена продажи"}
+                      </Button>
+                    </div>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="flex sm:flex-col gap-2 w-full sm:w-auto">
                     <Button
-                      variant="outline"
-                      className="justify-start text-left"
-                      onClick={() => openSellingPriceDialog(product.id)}
+                      size="icon"
+                      variant="destructive"
+                      onClick={() => deleteProduct(product.id)}
+                      className="flex-1 sm:flex-none"
                     >
-                      {product.sellingPrice ? `Продажа: ${product.sellingPrice} ₽` : "Цена продажи"}
-                    </Button>
-
-                    <Button
-                      variant="outline"
-                      className="justify-start text-left"
-                      onClick={() => openPurchasePriceDialog(product.id)}
-                    >
-                      {product.purchasePrice ? `Покупка: ${product.purchasePrice} ₽` : "Цена покупки"}
+                      <Icon name="Trash2" size={18} />
                     </Button>
                   </div>
                 </div>
 
-                <div className="flex sm:flex-col gap-2 w-full sm:w-auto">
-                  <Button
-                    size="icon"
-                    variant="outline"
-                    onClick={() => setEditingId(editingId === product.id ? null : product.id)}
-                    className="flex-1 sm:flex-none"
-                  >
-                    <Icon name="Pencil" size={18} />
-                  </Button>
-                  <Button
-                    size="icon"
-                    variant="destructive"
-                    onClick={() => deleteProduct(product.id)}
-                    className="flex-1 sm:flex-none"
-                  >
-                    <Icon name="X" size={18} />
-                  </Button>
-                </div>
+                {product.sellingPrice && product.purchasePrice && (
+                  <div className="pt-3 border-t flex justify-between text-sm">
+                    <span className="text-gray-600">Маржа за единицу:</span>
+                    <span className={`font-medium ${product.sellingPrice - product.purchasePrice > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                      {(product.sellingPrice - product.purchasePrice).toFixed(2)} ₽
+                      {" "}
+                      ({((product.sellingPrice - product.purchasePrice) / product.purchasePrice * 100).toFixed(1)}%)
+                    </span>
+                  </div>
+                )}
+
+                {product.sellingPrice && product.purchasePrice && product.quantity && (
+                  <div className="flex justify-between text-sm font-bold">
+                    <span className="text-gray-900">Общая маржа:</span>
+                    <span className={`${(product.sellingPrice - product.purchasePrice) * product.quantity > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                      {((product.sellingPrice - product.purchasePrice) * product.quantity).toFixed(2)} ₽
+                    </span>
+                  </div>
+                )}
               </div>
-
-              {product.sellingPrice && product.purchasePrice && (
-                <div className="mt-4 pt-4 border-t flex justify-between text-sm">
-                  <span className="text-gray-600">Маржа:</span>
-                  <span className={`font-medium ${product.sellingPrice - product.purchasePrice > 0 ? 'text-green-600' : 'text-red-600'}`}>
-                    {(product.sellingPrice - product.purchasePrice).toFixed(2)} ₽
-                    {" "}
-                    ({((product.sellingPrice - product.purchasePrice) / product.purchasePrice * 100).toFixed(1)}%)
-                  </span>
-                </div>
-              )}
             </Card>
           ))}
         </div>
@@ -332,7 +439,7 @@ const Index = () => {
               <Icon name="X" size={18} className="mr-2" />
               Отменить
             </Button>
-            <Button onClick={confirmPhoto} disabled={!tempPhoto}>
+            <Button onClick={confirmPhoto}>
               <Icon name="Check" size={18} className="mr-2" />
               Принять
             </Button>
@@ -388,6 +495,31 @@ const Index = () => {
         </DialogContent>
       </Dialog>
 
+      <Dialog open={quantityDialogOpen !== null} onOpenChange={(open) => !open && cancelQuantity()}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Количество товара</DialogTitle>
+          </DialogHeader>
+          <Input
+            type="number"
+            placeholder="Введите количество..."
+            value={tempQuantity}
+            onChange={(e) => setTempQuantity(e.target.value)}
+            min="1"
+          />
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={cancelQuantity}>
+              <Icon name="X" size={18} className="mr-2" />
+              Отменить
+            </Button>
+            <Button onClick={confirmQuantity} disabled={!tempQuantity}>
+              <Icon name="Check" size={18} className="mr-2" />
+              Принять
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={sellingPriceDialogOpen !== null} onOpenChange={(open) => !open && cancelSellingPrice()}>
         <DialogContent>
           <DialogHeader>
@@ -398,6 +530,7 @@ const Index = () => {
             placeholder="Введите цену продажи..."
             value={tempSellingPrice}
             onChange={(e) => setTempSellingPrice(e.target.value)}
+            step="0.01"
           />
           <DialogFooter className="gap-2">
             <Button variant="outline" onClick={cancelSellingPrice}>
@@ -422,6 +555,7 @@ const Index = () => {
             placeholder="Введите цену покупки..."
             value={tempPurchasePrice}
             onChange={(e) => setTempPurchasePrice(e.target.value)}
+            step="0.01"
           />
           <DialogFooter className="gap-2">
             <Button variant="outline" onClick={cancelPurchasePrice}>
