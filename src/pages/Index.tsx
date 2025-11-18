@@ -70,6 +70,13 @@ const Index = () => {
     <div className="min-h-screen bg-gray-50 p-4 md:p-8">
       <div className="max-w-6xl mx-auto">
         <div className="mb-8">
+          <div className="flex items-center gap-6 mb-8">
+            <img 
+              src="https://cdn.poehali.dev/files/4a353bde-4165-4e53-90dd-6a736abe41d4.png" 
+              alt="CARFIX Logo" 
+              className="h-12 md:h-16 w-auto"
+            />
+          </div>
           <h1 className="text-3xl font-bold text-gray-900 mb-6">Учет товаров</h1>
           
           <div className="relative mb-6">
